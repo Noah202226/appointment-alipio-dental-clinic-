@@ -9,8 +9,9 @@ import {
   Pencil,
   Tag,
   Megaphone,
+  AlertCircle,
 } from "lucide-react";
-import { format, isBefore, startOfDay } from "date-fns";
+import { format, isBefore, startOfDay, parse } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,12 +31,23 @@ import { Query } from "appwrite";
 
 const DB = process.env.NEXT_PUBLIC_DATABASE_ID!;
 const BOOKINGS = "appointments";
+const SCHEDULES = "clinic_schedules"; // The new collection you created
 
 export default function PublicAppointmentForm() {
   const [bookedSlots, setBookedSlots] = React.useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [success, setSuccess] = React.useState(false);
   const [now, setNow] = React.useState(new Date());
+
+  // State for dynamic operating hours
+  const [operatingHours, setOperatingHours] = React.useState<{
+    open: string;
+    close: string;
+    active: boolean;
+    name?: string; // To show "Summer Hours" etc.
+  } | null>(null);
+
+  const [isLoadingHours, setIsLoadingHours] = React.useState(false);
 
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
     new Date(),
@@ -53,6 +65,60 @@ export default function PublicAppointmentForm() {
     return () => clearInterval(timer);
   }, []);
 
+  // 1. Fetch Operating Hours Logic
+  const fetchOperatingHours = React.useCallback(async (date: Date) => {
+    setIsLoadingHours(true);
+    try {
+      // Fetch all schedules sorted by priority (High priority overrides low)
+      const res = await databases.listDocuments(DB, SCHEDULES, [
+        Query.orderDesc("priority"),
+      ]);
+
+      const targetTime = date.getTime();
+
+      // Find the first schedule that covers this date
+      const activeSchedule = res.documents.find((sch) => {
+        const start = new Date(sch.startDate).getTime();
+        const end = new Date(sch.endDate).getTime();
+        // Reset time parts for accurate date comparison if needed,
+        // but typically ISO strings work if generated correctly.
+        return targetTime >= start && targetTime <= end;
+      });
+
+      if (!activeSchedule) {
+        // Fallback if no schedule covers this date (assume closed or default)
+        setOperatingHours({
+          open: "00:00",
+          close: "00:00",
+          active: false,
+          name: "No Schedule Found",
+        });
+        return;
+      }
+
+      const config = JSON.parse(activeSchedule.config);
+      const dayName = format(date, "EEEE"); // "Monday", "Tuesday"...
+      const daySettings = config[dayName];
+
+      setOperatingHours({
+        ...daySettings,
+        name: activeSchedule.name, // Pass the schedule name to UI (e.g. "Holiday Hours")
+      });
+    } catch (err) {
+      console.error("Error fetching hours:", err);
+      // Fallback safe mode
+      setOperatingHours({
+        open: "09:00",
+        close: "17:00",
+        active: true,
+        name: "System Default",
+      });
+    } finally {
+      setIsLoadingHours(false);
+    }
+  }, []);
+
+  // 2. Load Bookings
   const loadBookedSlots = React.useCallback(async (date: Date) => {
     const key = format(date, "yyyy-MM-dd");
     try {
@@ -66,22 +132,45 @@ export default function PublicAppointmentForm() {
     }
   }, []);
 
+  // Trigger both fetches when date changes
   React.useEffect(() => {
-    if (selectedDate) loadBookedSlots(selectedDate);
-    setSelectedTime(undefined);
-  }, [selectedDate, loadBookedSlots]);
-
-  const slots = React.useMemo(() => {
-    if (!selectedDate) return [];
-    const generated = [];
-    for (let t = 540; t < 1020; t += 30) {
-      const h = Math.floor(t / 60),
-        m = t % 60;
-      generated.push(format(new Date(2000, 0, 1, h, m), "hh:mm a"));
+    if (selectedDate) {
+      loadBookedSlots(selectedDate);
+      fetchOperatingHours(selectedDate);
     }
+    setSelectedTime(undefined);
+  }, [selectedDate, loadBookedSlots, fetchOperatingHours]);
+
+  // 3. Generate Slots based on Dynamic Hours
+  const slots = React.useMemo(() => {
+    if (!selectedDate || !operatingHours || !operatingHours.active) return [];
+
+    const { open, close } = operatingHours;
+    const generated = [];
+
+    // Parse start and end times (e.g., "09:00" -> Date object)
+    const startDate = parse(open, "HH:mm", selectedDate);
+    const endDate = parse(close, "HH:mm", selectedDate);
+
+    // Convert to minutes for the loop
+    let currentMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+    const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+
+    // Loop in 30 min intervals
+    while (currentMinutes < endMinutes) {
+      const h = Math.floor(currentMinutes / 60);
+      const m = currentMinutes % 60;
+
+      // Format 12-hour string (e.g. "09:00 AM")
+      const timeString = format(new Date(2000, 0, 1, h, m), "hh:mm a");
+      generated.push(timeString);
+
+      currentMinutes += 30;
+    }
+
     const booked = bookedSlots.map((b) => b.time);
     return generated.filter((t) => !booked.includes(t));
-  }, [selectedDate, bookedSlots]);
+  }, [selectedDate, bookedSlots, operatingHours]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -100,7 +189,6 @@ export default function PublicAppointmentForm() {
         dateKey: format(selectedDate, "yyyy-MM-dd"),
         time: selectedTime,
         status: "pending",
-        // FIX: Convert the number to a string to match Appwrite schema
         timestamp: String(Math.floor(Date.now() / 1000)),
       });
       setSuccess(true);
@@ -168,35 +256,67 @@ export default function PublicAppointmentForm() {
                   mode="single"
                   selected={selectedDate}
                   onSelect={setSelectedDate}
-                  disabled={(date) =>
-                    isBefore(date, startOfDay(new Date())) ||
-                    date.getDay() === 0
+                  disabled={
+                    (date) => isBefore(date, startOfDay(new Date()))
+                    // Removed fixed Sunday check since schedules now handle closed days
                   }
                   className="rounded-md border-zinc-100 w-full"
                 />
               </Card>
 
-              <Card className="bg-white border-zinc-200 p-5 shadow-sm">
-                <Label className="text-emerald-700 font-bold flex items-center gap-2 mb-4">
-                  <Clock className="h-4 w-4" /> 2. Available Slots
-                </Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {slots.map((t) => (
-                    <Button
-                      key={t}
-                      type="button"
-                      variant={selectedTime === t ? "default" : "outline"}
-                      onClick={() => setSelectedTime(t)}
-                      className={`text-[10px] h-9 transition-colors ${
-                        selectedTime === t
-                          ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                          : "border-zinc-200 text-zinc-600 hover:bg-emerald-50"
-                      }`}
-                    >
-                      {t}
-                    </Button>
-                  ))}
+              <Card className="bg-white border-zinc-200 p-5 shadow-sm min-h-50">
+                <div className="flex justify-between items-center mb-4">
+                  <Label className="text-emerald-700 font-bold flex items-center gap-2">
+                    <Clock className="h-4 w-4" /> 2. Available Slots
+                  </Label>
+                  {/* Badge showing which schedule is active */}
+                  {operatingHours?.name && (
+                    <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-full font-bold border border-blue-100">
+                      {operatingHours.name}
+                    </span>
+                  )}
                 </div>
+
+                {isLoadingHours ? (
+                  <div className="flex flex-col items-center justify-center h-40 text-zinc-400 gap-2">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600"></div>
+                    <span className="text-xs">Checking availability...</span>
+                  </div>
+                ) : !operatingHours?.active ? (
+                  // CLOSED STATE
+                  <div className="flex flex-col items-center justify-center h-40 bg-red-50 rounded-xl border border-red-100 text-red-500 gap-2">
+                    <AlertCircle className="h-8 w-8" />
+                    <span className="font-bold">Clinic Closed</span>
+                    <span className="text-xs">
+                      No appointments on this date.
+                    </span>
+                  </div>
+                ) : (
+                  // OPEN STATE
+                  <div className="grid grid-cols-3 gap-2">
+                    {slots.length > 0 ? (
+                      slots.map((t) => (
+                        <Button
+                          key={t}
+                          type="button"
+                          variant={selectedTime === t ? "default" : "outline"}
+                          onClick={() => setSelectedTime(t)}
+                          className={`text-[10px] h-9 transition-colors ${
+                            selectedTime === t
+                              ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                              : "border-zinc-200 text-zinc-600 hover:bg-emerald-50"
+                          }`}
+                        >
+                          {t}
+                        </Button>
+                      ))
+                    ) : (
+                      <div className="col-span-3 text-center py-8 text-zinc-400 text-sm">
+                        fully booked
+                      </div>
+                    )}
+                  </div>
+                )}
               </Card>
             </div>
 
@@ -294,7 +414,7 @@ export default function PublicAppointmentForm() {
               <Button
                 type="submit"
                 disabled={isSubmitting || !selectedTime}
-                className="w-full py-7 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200 transition-all active:scale-95"
+                className="w-full py-7 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100"
               >
                 {isSubmitting ? "Confirming..." : "Book Appointment"}
               </Button>
@@ -332,7 +452,7 @@ export default function PublicAppointmentForm() {
                   viewBox="0 0 24 24"
                   className="h-5 w-5"
                 >
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.954 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
               </div>
               <div>
@@ -364,6 +484,12 @@ export default function PublicAppointmentForm() {
                   <p className="text-xl font-bold text-emerald-600">
                     {selectedTime}
                   </p>
+                  {/* Dynamic Schedule Name in Summary */}
+                  {operatingHours?.name && (
+                    <p className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1">
+                      <Tag className="h-3 w-3" /> {operatingHours.name}
+                    </p>
+                  )}
                 </div>
 
                 {/* Patient Details Preview */}
