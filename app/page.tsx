@@ -136,11 +136,11 @@ export default function PublicAppointmentForm() {
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col xl:flex-row font-sans">
       <main className="flex-1 p-4 lg:p-10 overflow-y-auto">
-        <div className="max-w-4xl mx-auto space-y-8">
+        <div className="max-w-7xl mx-auto space-y-8">
           <header className="flex items-center gap-4 bg-white p-6 rounded-2xl border border-zinc-200 shadow-sm">
             <div className="bg-emerald-50 p-2 rounded-lg">
               <img
-                src="/Egargue-logo2.PNG"
+                src="/alipio-dental-logo.png"
                 alt="Logo"
                 className="h-10 w-auto"
               />
@@ -303,8 +303,9 @@ export default function PublicAppointmentForm() {
         </div>
       </main>
 
-      <aside className="hidden xl:flex w-80 bg-white border-l border-zinc-200 flex-col p-6 sticky top-0 h-screen shadow-sm">
-        <div className="space-y-8">
+      <aside className="hidden xl:flex w-80 bg-white border-l border-zinc-200 flex-col p-6 sticky top-0 h-screen shadow-sm overflow-y-auto">
+        <div className="space-y-6">
+          {/* Live Clock Card */}
           <div className="bg-emerald-600 p-6 rounded-2xl text-center text-white shadow-emerald-200 shadow-xl">
             <p className="text-emerald-100 text-[10px] font-bold uppercase tracking-widest mb-1">
               Clinic Time
@@ -317,12 +318,42 @@ export default function PublicAppointmentForm() {
             </p>
           </div>
 
+          {/* Facebook Marketing Card */}
+          <a
+            href="https://www.facebook.com/Alipio.Dental.Org001?rdid=EVbivnMJI2YxZQYk&share_url=https%3A%2F%2Fwww.facebook.com%2Fshare%2F1DGUVps16U%2F#"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block p-4 rounded-2xl border border-blue-100 bg-blue-50/50 hover:bg-blue-50 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                <svg
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                >
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-blue-900">
+                  Follow us on Facebook
+                </h4>
+                <p className="text-[11px] text-blue-700">
+                  See our latest transformations & tips
+                </p>
+              </div>
+            </div>
+          </a>
+
+          {/* Summary Section */}
           <div className="space-y-4">
             <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-              Summary
+              Your Selection
             </h4>
             {selectedTime ? (
               <div className="space-y-3">
+                {/* Appointment Slot */}
                 <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
                   <p className="text-[10px] text-emerald-600 uppercase font-bold">
                     Schedule
@@ -334,16 +365,98 @@ export default function PublicAppointmentForm() {
                     {selectedTime}
                   </p>
                 </div>
-                <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 text-zinc-600 text-sm italic">
-                  {name || "Entering details..."}
+
+                {/* Patient Details Preview */}
+                <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 space-y-3">
+                  <div>
+                    <p className="text-[10px] text-zinc-400 uppercase font-bold">
+                      Patient
+                    </p>
+                    <p className="text-sm font-medium text-zinc-700 truncate">
+                      {name || (
+                        <span className="text-zinc-300 italic">
+                          Enter name...
+                        </span>
+                      )}
+                    </p>
+                  </div>
+
+                  {phone && (
+                    <div>
+                      <p className="text-[10px] text-zinc-400 uppercase font-bold">
+                        Contact
+                      </p>
+                      <p className="text-sm font-medium text-zinc-700">
+                        {phone}
+                      </p>
+                    </div>
+                  )}
+
+                  {email && (
+                    <div>
+                      <p className="text-[10px] text-zinc-400 uppercase font-bold">
+                        Email
+                      </p>
+                      <p className="text-sm font-medium text-zinc-700">
+                        {email}
+                      </p>
+                    </div>
+                  )}
+
+                  {note && (
+                    <div className="pt-2 border-t border-zinc-200/60">
+                      <p className="text-[10px] text-zinc-400 uppercase font-bold">
+                        Reason
+                      </p>
+                      <p className="text-xs text-zinc-600 line-clamp-2 italic">
+                        "{note}"
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
-              <div className="p-8 border-2 border-dashed border-zinc-100 rounded-2xl text-center text-zinc-300">
-                <Clock className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                <p className="text-xs">Waiting for selection</p>
+              <div className="p-6 border-2 border-dashed border-zinc-100 rounded-2xl text-center text-zinc-300">
+                <Clock className="h-6 w-6 mx-auto mb-2 opacity-20" />
+                <p className="text-xs">Pick a time to see summary</p>
               </div>
             )}
+          </div>
+          {/* Why Choose Us / Trust Signals */}
+          <div className="pt-4 space-y-3">
+            <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+              Why Alipio Dental?
+            </h4>
+
+            <div className="flex gap-3 items-start">
+              <div className="bg-emerald-100 p-1.5 rounded-full text-emerald-600 mt-1">
+                <CheckCircle className="h-3 w-3" />
+              </div>
+              <p className="text-xs text-zinc-600">
+                <strong>Expert Care:</strong> Serving smiles since 1989 with
+                over 30 years of experience.
+              </p>
+            </div>
+
+            <div className="flex gap-3 items-start">
+              <div className="bg-emerald-100 p-1.5 rounded-full text-emerald-600 mt-1">
+                <CheckCircle className="h-3 w-3" />
+              </div>
+              <p className="text-xs text-zinc-600">
+                <strong>Modern Tech:</strong> Equipped with the latest dental
+                technology for painless visits.
+              </p>
+            </div>
+
+            <div className="flex gap-3 items-start">
+              <div className="bg-emerald-100 p-1.5 rounded-full text-emerald-600 mt-1">
+                <CheckCircle className="h-3 w-3" />
+              </div>
+              <p className="text-xs text-zinc-600">
+                <strong>Safety First:</strong> Strict sterilization protocols
+                following international standards.
+              </p>
+            </div>
           </div>
         </div>
       </aside>
